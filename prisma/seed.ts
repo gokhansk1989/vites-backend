@@ -11,70 +11,46 @@ async function main() {
 
   // ============ KATEGORİLER ============
   const categories = await Promise.all([
-    prisma.category.upsert({
-      where: { slug: 'kask' },
-      update: {},
-      create: {
-        name: 'Kask',
-        slug: 'kask',
-        iconKey: 'helmet',
-      },
-    }),
-    prisma.category.upsert({
-      where: { slug: 'mont' },
-      update: {},
-      create: {
-        name: 'Mont',
-        slug: 'mont',
-        iconKey: 'jacket',
-      },
-    }),
-    prisma.category.upsert({
-      where: { slug: 'eldiven' },
-      update: {},
-      create: {
-        name: 'Eldiven',
-        slug: 'eldiven',
-        iconKey: 'gloves',
-      },
-    }),
-    prisma.category.upsert({
-      where: { slug: 'bot' },
-      update: {},
-      create: {
-        name: 'Bot',
-        slug: 'bot',
-        iconKey: 'boot',
-      },
-    }),
+    prisma.category.upsert({ where: { slug: 'kask' }, update: {}, create: { name: 'Kask', slug: 'kask', iconKey: 'helmet', sortOrder: 1 } }),
+    prisma.category.upsert({ where: { slug: 'mont' }, update: {}, create: { name: 'Mont', slug: 'mont', iconKey: 'jacket', sortOrder: 2 } }),
+    prisma.category.upsert({ where: { slug: 'eldiven' }, update: {}, create: { name: 'Eldiven', slug: 'eldiven', iconKey: 'gloves', sortOrder: 3 } }),
+    prisma.category.upsert({ where: { slug: 'bot' }, update: {}, create: { name: 'Bot', slug: 'bot', iconKey: 'boot', sortOrder: 4 } }),
+    prisma.category.upsert({ where: { slug: 'koruyucu' }, update: {}, create: { name: 'Koruyucu', slug: 'koruyucu', iconKey: 'shield', sortOrder: 5 } }),
+    prisma.category.upsert({ where: { slug: 'aksesuar' }, update: {}, create: { name: 'Aksesuar', slug: 'aksesuar', iconKey: 'gear', sortOrder: 6 } }),
+    prisma.category.upsert({ where: { slug: 'yagmurluk' }, update: {}, create: { name: 'Yağmurluk', slug: 'yagmurluk', iconKey: 'rain', sortOrder: 7 } }),
   ]);
 
   // ============ MARKALAR ============
   const brands = await Promise.all([
-    prisma.brand.upsert({
-      where: { slug: 'shoei' },
-      update: {},
-      create: { name: 'Shoei', slug: 'shoei' },
-    }),
-    prisma.brand.upsert({
-      where: { slug: 'agv' },
-      update: {},
-      create: { name: 'AGV', slug: 'agv' },
-    }),
-    prisma.brand.upsert({
-      where: { slug: 'arai' },
-      update: {},
-      create: { name: 'Arai', slug: 'arai' },
-    }),
-    prisma.brand.upsert({
-      where: { slug: 'alpinestars' },
-      update: {},
-      create: { name: 'Alpinestars', slug: 'alpinestars' },
-    }),
+    prisma.brand.upsert({ where: { slug: 'shoei' }, update: {}, create: { name: 'Shoei', slug: 'shoei' } }),
+    prisma.brand.upsert({ where: { slug: 'agv' }, update: {}, create: { name: 'AGV', slug: 'agv' } }),
+    prisma.brand.upsert({ where: { slug: 'arai' }, update: {}, create: { name: 'Arai', slug: 'arai' } }),
+    prisma.brand.upsert({ where: { slug: 'alpinestars' }, update: {}, create: { name: 'Alpinestars', slug: 'alpinestars' } }),
+    prisma.brand.upsert({ where: { slug: 'dainese' }, update: {}, create: { name: 'Dainese', slug: 'dainese' } }),
+    prisma.brand.upsert({ where: { slug: 'held' }, update: {}, create: { name: 'Held', slug: 'held' } }),
+    prisma.brand.upsert({ where: { slug: 'rev-it' }, update: {}, create: { name: "Rev'it", slug: 'rev-it' } }),
+    prisma.brand.upsert({ where: { slug: 'nolan' }, update: {}, create: { name: 'Nolan', slug: 'nolan' } }),
+    prisma.brand.upsert({ where: { slug: 'ls2' }, update: {}, create: { name: 'LS2', slug: 'ls2' } }),
+    prisma.brand.upsert({ where: { slug: 'hjc' }, update: {}, create: { name: 'HJC', slug: 'hjc' } }),
   ]);
 
   // ============ KULLANICILAR ============
+  const adminPassword = await bcrypt.hash('admin123!', 10);
+
   const users = await Promise.all([
+    // Admin kullanıcısı
+    prisma.user.upsert({
+      where: { email: 'admin@vites.app' },
+      update: {},
+      create: {
+        email: 'admin@vites.app',
+        displayName: 'Vites Admin',
+        passwordHash: adminPassword,
+        role: 'SUPER_ADMIN',
+        status: 'ACTIVE',
+        emailVerifiedAt: new Date(),
+      },
+    }),
     prisma.user.upsert({
       where: { email: 'ahmet@example.com' },
       update: {},
@@ -146,37 +122,32 @@ async function main() {
         originalPrice: 10900,
         city: 'İstanbul',
         status: 'ACTIVE',
-        sellerId: users[0].id,
+        sellerId: users[1].id,
         categoryId: categories[0].id,
         brandId: brands[0].id,
         publishedAt: new Date(),
       },
     }),
     prisma.listing.upsert({
-      where: {
-        id: 'listing-2',
-      },
+      where: { id: 'listing-2' },
       update: {},
       create: {
         id: 'listing-2',
         title: 'Alpinestars T-GP Plus R V3 Deri Mont',
-        description:
-          'Track-use deri mont, perfekt durumdadır. Sürücü değişti, yeni aldı.',
+        description: 'Track-use deri mont, perfekt durumdadır. Sürücü değişti, yeni aldı.',
         condition: 'GOOD',
         sizeLabel: '52',
         price: 4900,
         city: 'İzmir',
         status: 'ACTIVE',
-        sellerId: users[1].id,
+        sellerId: users[2].id,
         categoryId: categories[1].id,
         brandId: brands[3].id,
         publishedAt: new Date(),
       },
     }),
     prisma.listing.upsert({
-      where: {
-        id: 'listing-3',
-      },
+      where: { id: 'listing-3' },
       update: {},
       create: {
         id: 'listing-3',
@@ -187,7 +158,7 @@ async function main() {
         price: 2150,
         city: 'Ankara',
         status: 'ACTIVE',
-        sellerId: users[2].id,
+        sellerId: users[3].id,
         categoryId: categories[2].id,
         publishedAt: new Date(),
       },
@@ -243,32 +214,19 @@ async function main() {
   // ============ SUBSKRİPSİYONLAR ============
   await Promise.all([
     prisma.subscription.upsert({
-      where: { userId: users[0].id },
-      update: {},
-      create: {
-        userId: users[0].id,
-        planId: plans[1].id, // Sürücü+
-        status: 'ACTIVE',
-        founderDiscount: true,
-      },
-    }),
-    prisma.subscription.upsert({
       where: { userId: users[1].id },
       update: {},
-      create: {
-        userId: users[1].id,
-        planId: plans[0].id, // Sürücü
-        status: 'ACTIVE',
-      },
+      create: { userId: users[1].id, planId: plans[1].id, status: 'ACTIVE', founderDiscount: true },
     }),
     prisma.subscription.upsert({
       where: { userId: users[2].id },
       update: {},
-      create: {
-        userId: users[2].id,
-        planId: plans[0].id,
-        status: 'ACTIVE',
-      },
+      create: { userId: users[2].id, planId: plans[0].id, status: 'ACTIVE' },
+    }),
+    prisma.subscription.upsert({
+      where: { userId: users[3].id },
+      update: {},
+      create: { userId: users[3].id, planId: plans[0].id, status: 'ACTIVE' },
     }),
   ]);
 
@@ -293,9 +251,10 @@ async function main() {
 
   console.log('✅ Seeding completed!');
   console.log('\n🔐 Test hesapları:');
-  console.log('  - Email: ahmet@example.com / Şifre: password123');
-  console.log('  - Email: selin@example.com / Şifre: password123');
-  console.log('  - Email: burak@example.com / Şifre: password123');
+  console.log('  - Email: admin@vites.app     / Şifre: admin123!   (SUPER_ADMIN)');
+  console.log('  - Email: ahmet@example.com   / Şifre: password123');
+  console.log('  - Email: selin@example.com   / Şifre: password123');
+  console.log('  - Email: burak@example.com   / Şifre: password123');
 }
 
 main()
