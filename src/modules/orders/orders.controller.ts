@@ -7,58 +7,62 @@ import {
   Body,
   UseGuards,
   Request,
+  Query,
 } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
 import { OrdersService } from './orders.service';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { OrderStatus } from '@prisma/client';
-import { Decimal } from '@prisma/client/runtime/library';
+import { CreateOrderDto, ConfirmCashPaymentDto, ConfirmHandoffDto } from './dto/orders.dto';
 
 @Controller('orders')
+@UseGuards(AuthGuard('jwt'))
 export class OrdersController {
   constructor(private ordersService: OrdersService) {}
 
   @Post()
-  @UseGuards(JwtAuthGuard)
-  async createOrder(
-    @Request() req,
-    @Body()
-    dto: {
-      listingId: string;
-      sellerId: string;
-      amount: string;
-      commissionRate?: string;
-    },
-  ) {
-    return this.ordersService.createOrder({
-      listingId: dto.listingId,
-      buyerId: req.user.id,
-      sellerId: dto.sellerId,
-      amount: new Decimal(dto.amount),
-      commissionRate: dto.commissionRate
-        ? new Decimal(dto.commissionRate)
-        : undefined,
-    });
+  create(@Request() req, @Body() dto: CreateOrderDto) {
+    return this.ordersService.createOrder(req.user.id, dto);
   }
 
-  @Patch(':id/transition')
-  @UseGuards(JwtAuthGuard)
-  async transitionOrder(
-    @Param('id') orderId: string,
-    @Body() dto: { status: OrderStatus; trackingNo?: string; reason?: string },
-  ) {
-    return this.ordersService.transitionOrder(orderId, dto.status, {
-      trackingNo: dto.trackingNo,
-      reason: dto.reason,
-    });
+  @Get('mine')
+  getMine(@Request() req, @Query('role') role: 'buyer' | 'seller' = 'buyer') {
+    return this.ordersService.getMyOrders(req.user.id, role);
   }
 
-  @Post(':id/dispute')
-  @UseGuards(JwtAuthGuard)
-  async openDispute(
-    @Param('id') orderId: string,
+  @Get(':id')
+  getOne(@Param('id') id: string, @Request() req) {
+    return this.ordersService.getOrder(id, req.user.id);
+  }
+
+  @Patch(':id/cancel')
+  cancel(@Param('id') id: string, @Request() req) {
+    return this.ordersService.cancelOrder(id, req.user.id);
+  }
+
+  // ── Elden ödeme akışı ──
+
+  /** Alıcı: "Elden ödeyeceğim" → CREATED → PAID_ESCROW */
+  @Post(':id/cash-payment')
+  confirmCashPayment(
+    @Param('id') id: string,
     @Request() req,
-    @Body() dto: { reason: string },
+    @Body() dto: ConfirmCashPaymentDto,
   ) {
-    return this.ordersService.openDispute(orderId, req.user.id, dto.reason);
+    return this.ordersService.confirmCashPayment(id, req.user.id, dto);
+  }
+
+  /** Satıcı: "Teslim ettim" → PAID_ESCROW → DELIVERED */
+  @Post(':id/handoff')
+  confirmHandoff(
+    @Param('id') id: string,
+    @Request() req,
+    @Body() dto: ConfirmHandoffDto,
+  ) {
+    return this.ordersService.confirmHandoff(id, req.user.id, dto);
+  }
+
+  /** Alıcı: "Teslim aldım" → DELIVERED → COMPLETED */
+  @Post(':id/receipt')
+  confirmReceipt(@Param('id') id: string, @Request() req) {
+    return this.ordersService.confirmReceipt(id, req.user.id);
   }
 }

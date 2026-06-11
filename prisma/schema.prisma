@@ -309,11 +309,19 @@ model Offer {
 // ============================================================
 //  3) SİPARİŞ & EMANET (ESCROW) DURUM MAKİNESİ
 // ------------------------------------------------------------
-//  Akış:
+//  Online akış:
 //  CREATED -> AWAITING_PAYMENT -> PAID_ESCROW -> SHIPPED
 //          -> DELIVERED -> COMPLETED (para satıcıya aktarılır)
+//  Elden akış:
+//  CREATED -> PAID_ESCROW (alıcı onaylar) -> DELIVERED (satıcı teslim eder)
+//          -> COMPLETED (alıcı teslim alındı der)
 //  Sapmalar: DISPUTED -> REFUNDED | (çözüm) COMPLETED, ya da CANCELLED
 // ============================================================
+
+enum PaymentMethod {
+  ONLINE
+  CASH // elden ödeme — sanal pos kullanılmaz
+}
 
 enum OrderStatus {
   CREATED
@@ -336,7 +344,8 @@ model Order {
   sellerId  String
   seller    User        @relation("SellerOrders", fields: [sellerId], references: [id])
 
-  status    OrderStatus @default(CREATED)
+  status        OrderStatus   @default(CREATED)
+  paymentMethod PaymentMethod @default(ONLINE)
 
   // Tutar/komisyon — komisyon oranı sipariş anında dondurulur (sonradan
   // plan değişse bile bu sipariş etkilenmez).
@@ -369,14 +378,15 @@ model Order {
 }
 
 model Shipment {
-  id         String   @id @default(cuid())
-  orderId    String   @unique
-  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  carrier    String?  // "Yurtiçi", "Aras" vb.
-  trackingNo String?
-  shippedAt  DateTime?
+  id          String   @id @default(cuid())
+  orderId     String   @unique
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  carrier     String?  // "Yurtiçi", "Aras" vb. — kargolu teslimat
+  trackingNo  String?
+  meetingNote String?  // elden teslimatta buluşma yeri/notu
+  shippedAt   DateTime?
   deliveredAt DateTime?
-  createdAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
 }
 
 // ============================================================
@@ -388,6 +398,7 @@ enum PaymentProvider {
   PAYTR
   PARAM
   SIPAY
+  CASH // elden ödeme kaydı
 }
 
 enum PaymentType {
