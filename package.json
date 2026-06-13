@@ -1,5 +1,5 @@
 {
-  "name": "vites-backend",
+  "name": "motorya-backend",
   "version": "0.1.0",
   "description": "Motosiklet ekipman pazarı — NestJS backend",
   "main": "dist/main.js",
