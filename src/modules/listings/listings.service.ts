@@ -7,10 +7,36 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { ListingStatus } from '@prisma/client';
 import { CreateListingDto, UpdateListingDto, ListingsQueryDto } from './dto/listings.dto';
+import { SearchService, ListingDocument } from '../search/search.service';
 
 @Injectable()
 export class ListingsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private search: SearchService,
+  ) {}
+
+  private toSearchDoc(listing: any): ListingDocument {
+    return {
+      id: listing.id,
+      title: listing.title,
+      description: listing.description,
+      price: listing.price,
+      originalPrice: listing.originalPrice ?? undefined,
+      condition: listing.condition,
+      city: listing.city ?? undefined,
+      sizeLabel: listing.sizeLabel ?? undefined,
+      categoryId: listing.categoryId,
+      categoryName: listing.category?.name ?? '',
+      brandId: listing.brandId ?? undefined,
+      brandName: listing.brand?.name ?? undefined,
+      sellerId: listing.sellerId,
+      sellerName: listing.seller?.displayName ?? '',
+      imageUrl: listing.images?.[0]?.url ?? undefined,
+      status: listing.status,
+      createdAt: new Date(listing.createdAt).getTime(),
+    };
+  }
 
   async createListing(sellerId: string, dto: CreateListingDto) {
     const { imageUrls = [], ...rest } = dto;
@@ -183,6 +209,8 @@ export class ListingsService {
       data: { deletedAt: new Date(), status: 'ARCHIVED' },
     });
 
+    this.search.removeListing(id).catch(() => null);
+
     return { success: true };
   }
 
@@ -242,15 +270,52 @@ export class ListingsService {
 
   // Admin/moderatör tarafından çağrılır
   async changeStatus(id: string, status: ListingStatus) {
-    const listing = await this.prisma.listing.findFirst({ where: { id, deletedAt: null } });
+    const listing = await this.prisma.listing.findFirst({
+      where: { id, deletedAt: null },
+      include: {
+        images: { orderBy: { sortOrder: 'asc' }, take: 1 },
+        category: true,
+        brand: true,
+        seller: { select: { id: true, displayName: true } },
+      },
+    });
     if (!listing) throw new NotFoundException('Listing not found');
 
-    return this.prisma.listing.update({
+    const updated = await this.prisma.listing.update({
       where: { id },
       data: {
         status,
         publishedAt: status === ListingStatus.ACTIVE && !listing.publishedAt ? new Date() : listing.publishedAt,
       },
+      include: {
+        images: { orderBy: { sortOrder: 'asc' }, take: 1 },
+        category: true,
+        brand: true,
+        seller: { select: { id: true, displayName: true } },
+      },
     });
+
+    if (status === ListingStatus.ACTIVE) {
+      this.search.indexListing(this.toSearchDoc(updated)).catch(() => null);
+    } else {
+      this.search.removeListing(id).catch(() => null);
+    }
+
+    return updated;
+  }
+
+  async reindexAll() {
+    const listings = await this.prisma.listing.findMany({
+      where: { status: ListingStatus.ACTIVE, deletedAt: null },
+      include: {
+        images: { orderBy: { sortOrder: 'asc' }, take: 1 },
+        category: true,
+        brand: true,
+        seller: { select: { id: true, displayName: true } },
+      },
+    });
+
+    await this.search.reindexAll(listings.map((l) => this.toSearchDoc(l)));
+    return { indexed: listings.length };
   }
 }

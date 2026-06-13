@@ -25,6 +25,18 @@ services:
       timeout: 5s
       retries: 5
 
+  meilisearch:
+    image: getmeili/meilisearch:v1.7
+    container_name: vites_meilisearch
+    environment:
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-meili-dev-key}
+      MEILI_ENV: production
+    volumes:
+      - meili_data:/meili_data
+    ports:
+      - "7700:7700"
+    restart: unless-stopped
+
   api:
     build: .
     container_name: vites_api
@@ -38,6 +50,8 @@ services:
       DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-dev-password}@postgres:5432/${DB_NAME:-vites}
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-production}
+      MEILI_HOST: http://meilisearch:7700
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-meili-dev-key}
       PORT: 3000
     ports:
       - "3000:3000"
@@ -47,3 +61,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  meili_data:
