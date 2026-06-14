@@ -21,8 +21,8 @@ export class ListingsService {
       id: listing.id,
       title: listing.title,
       description: listing.description,
-      price: listing.price,
-      originalPrice: listing.originalPrice ?? undefined,
+      price: Number(listing.price),
+      originalPrice: listing.originalPrice ? Number(listing.originalPrice) : undefined,
       condition: listing.condition,
       city: listing.city ?? undefined,
       sizeLabel: listing.sizeLabel ?? undefined,
@@ -223,7 +223,12 @@ export class ListingsService {
     const updated = await this.prisma.listing.update({
       where: { id },
       data: { status: newStatus },
-      include: { images: { orderBy: { sortOrder: 'asc' }, take: 1 }, category: true },
+      include: {
+        images: { orderBy: { sortOrder: 'asc' }, take: 1 },
+        category: true,
+        brand: true,
+        seller: { select: { id: true, displayName: true } },
+      },
     });
 
     if (newStatus === ListingStatus.ACTIVE) {
