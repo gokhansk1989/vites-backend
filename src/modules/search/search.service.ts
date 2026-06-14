@@ -40,6 +40,7 @@ export class SearchService implements OnModuleInit {
 
   async onModuleInit() {
     try {
+      await this.client.createIndex('listings', { primaryKey: 'id' }).catch(() => {});
       this.index = this.client.index('listings');
       await this.index.updateSettings({
         searchableAttributes: ['title', 'description', 'categoryName', 'brandName', 'city'],
@@ -59,7 +60,7 @@ export class SearchService implements OnModuleInit {
 
   async indexListing(doc: ListingDocument) {
     try {
-      await this.index.addDocuments([doc]);
+      await this.index.addDocuments([doc], { primaryKey: 'id' });
     } catch (err) {
       this.logger.warn(`Failed to index listing ${doc.id}: ${err.message}`);
     }
@@ -140,7 +141,7 @@ export class SearchService implements OnModuleInit {
 
   async reindexAll(listings: ListingDocument[]) {
     try {
-      await this.index.addDocuments(listings);
+      await this.index.addDocuments(listings, { primaryKey: 'id' });
       this.logger.log(`Reindexed ${listings.length} listings`);
     } catch (err) {
       this.logger.warn(`Reindex failed: ${err.message}`);
