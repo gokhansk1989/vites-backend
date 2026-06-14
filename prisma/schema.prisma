@@ -69,6 +69,11 @@ model User {
   salesCount   Int      @default(0)
   isFounder    Boolean  @default(false) // "Kurucu Üye" rozeti
 
+  emailVerificationToken  String?   @unique
+  emailVerificationExpiry DateTime?
+  passwordResetToken      String?   @unique
+  passwordResetExpiry     DateTime?
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?

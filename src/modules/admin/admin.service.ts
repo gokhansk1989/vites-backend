@@ -1,10 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ModerateListingDto, ModerateUserDto } from './dto/admin.dto';
+import { MailService } from '../mail/mail.service';
 
 @Injectable()
 export class AdminService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private mail: MailService) {}
 
   async getMetrics() {
     const [
@@ -57,7 +58,10 @@ export class AdminService {
   }
 
   async moderateListing(id: string, adminId: string, dto: ModerateListingDto) {
-    const listing = await this.prisma.listing.findFirst({ where: { id, deletedAt: null } });
+    const listing = await this.prisma.listing.findFirst({
+      where: { id, deletedAt: null },
+      include: { seller: { select: { email: true, displayName: true } } },
+    });
     if (!listing) throw new NotFoundException('Listing not found');
 
     const [updated] = await this.prisma.$transaction([
@@ -78,6 +82,12 @@ export class AdminService {
         },
       }),
     ]);
+
+    if (dto.action === 'ACTIVE') {
+      this.mail.sendListingApprovedEmail(listing.seller.email, listing.seller.displayName, listing.title, id).catch(() => null);
+    } else if (dto.action === 'REJECTED') {
+      this.mail.sendListingRejectedEmail(listing.seller.email, listing.seller.displayName, listing.title, dto.note).catch(() => null);
+    }
 
     return updated;
   }

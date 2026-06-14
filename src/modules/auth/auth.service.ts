@@ -1,8 +1,10 @@
-import { Injectable, UnauthorizedException, ConflictException, BadRequestException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException, BadRequestException, NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { RegisterDto, LoginDto, AuthResponseDto } from './dto/auth.dto';
+import { MailService } from '../mail/mail.service';
 import * as bcrypt from 'bcryptjs';
+import * as crypto from 'crypto';
 
 function validateTcKimlik(tc: string): boolean {
   if (!/^[1-9][0-9]{10}$/.test(tc)) return false;
@@ -12,8 +14,11 @@ function validateTcKimlik(tc: string): boolean {
   const digit10 = ((odd * 7) - even) % 10;
   if (digit10 < 0 || digit10 !== d[9]) return false;
   const sum10 = d.slice(0, 10).reduce((a, b) => a + b, 0);
-  const digit11 = sum10 % 10;
-  return digit11 === d[10];
+  return (sum10 % 10) === d[10];
+}
+
+function generateToken(): string {
+  return crypto.randomBytes(32).toString('hex');
 }
 
 @Injectable()
@@ -21,9 +26,10 @@ export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
+    private mail: MailService,
   ) {}
 
-  async register(dto: RegisterDto): Promise<AuthResponseDto> {
+  async register(dto: RegisterDto): Promise<{ message: string }> {
     if (!validateTcKimlik(dto.tcKimlik)) {
       throw new BadRequestException('Geçersiz TC Kimlik numarası');
     }
@@ -39,6 +45,8 @@ export class AuthService {
     if (byPhone) throw new ConflictException('Bu telefon numarası zaten kayıtlı');
 
     const hashedPassword = await bcrypt.hash(dto.password, 10);
+    const token = generateToken();
+    const expiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
     const user = await this.prisma.user.create({
       data: {
@@ -47,16 +55,55 @@ export class AuthService {
         displayName: dto.displayName,
         tcKimlik: dto.tcKimlik,
         phone: dto.phone,
+        status: 'PENDING',
+        emailVerificationToken: token,
+        emailVerificationExpiry: expiry,
+      },
+    });
+
+    await this.mail.sendVerificationEmail(user.email, user.displayName, token);
+
+    return { message: 'Kayıt başarılı. E-posta adresinize doğrulama linki gönderdik.' };
+  }
+
+  async verifyEmail(token: string): Promise<AuthResponseDto> {
+    const user = await this.prisma.user.findUnique({ where: { emailVerificationToken: token } });
+    if (!user) throw new BadRequestException('Geçersiz doğrulama linki');
+    if (user.emailVerificationExpiry && user.emailVerificationExpiry < new Date()) {
+      throw new BadRequestException('Doğrulama linkinin süresi dolmuş. Yeni link talep edebilirsin.');
+    }
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
         status: 'ACTIVE',
+        emailVerifiedAt: new Date(),
+        emailVerificationToken: null,
+        emailVerificationExpiry: null,
       },
     });
 
     const accessToken = this.jwtService.sign({ sub: user.id, email: user.email });
-
     return {
       accessToken,
       user: { id: user.id, email: user.email, displayName: user.displayName, role: user.role },
     };
+  }
+
+  async resendVerification(email: string): Promise<{ message: string }> {
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (!user || user.emailVerifiedAt) return { message: 'İşlem tamamlandı.' };
+
+    const token = generateToken();
+    const expiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { emailVerificationToken: token, emailVerificationExpiry: expiry },
+    });
+
+    await this.mail.sendVerificationEmail(user.email, user.displayName, token);
+    return { message: 'Doğrulama linki tekrar gönderildi.' };
   }
 
   async login(dto: LoginDto): Promise<AuthResponseDto> {
@@ -66,11 +113,50 @@ export class AuthService {
     const passwordValid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!passwordValid) throw new UnauthorizedException('E-posta veya şifre hatalı');
 
-    const accessToken = this.jwtService.sign({ sub: user.id, email: user.email });
+    if (!user.emailVerifiedAt) {
+      throw new UnauthorizedException('E-posta adresinizi doğrulamanız gerekiyor. Lütfen gelen kutunuzu kontrol edin.');
+    }
 
+    if (user.status === 'SUSPENDED' || user.status === 'BANNED') {
+      throw new UnauthorizedException('Hesabınız askıya alınmıştır.');
+    }
+
+    const accessToken = this.jwtService.sign({ sub: user.id, email: user.email });
     return {
       accessToken,
       user: { id: user.id, email: user.email, displayName: user.displayName, role: user.role },
     };
+  }
+
+  async forgotPassword(email: string): Promise<{ message: string }> {
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (!user) return { message: 'Eğer bu e-posta kayıtlıysa sıfırlama linki gönderildi.' };
+
+    const token = generateToken();
+    const expiry = new Date(Date.now() + 60 * 60 * 1000);
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { passwordResetToken: token, passwordResetExpiry: expiry },
+    });
+
+    await this.mail.sendPasswordResetEmail(user.email, user.displayName, token);
+    return { message: 'Eğer bu e-posta kayıtlıysa sıfırlama linki gönderildi.' };
+  }
+
+  async resetPassword(token: string, newPassword: string): Promise<{ message: string }> {
+    const user = await this.prisma.user.findUnique({ where: { passwordResetToken: token } });
+    if (!user) throw new BadRequestException('Geçersiz veya süresi dolmuş link');
+    if (user.passwordResetExpiry && user.passwordResetExpiry < new Date()) {
+      throw new BadRequestException('Şifre sıfırlama linkinin süresi dolmuş');
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash, passwordResetToken: null, passwordResetExpiry: null },
+    });
+
+    return { message: 'Şifreniz başarıyla güncellendi.' };
   }
 }
